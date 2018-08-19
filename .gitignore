@@ -55,3 +55,6 @@ dkms.conf
 *.bin
 *.img
 build/
+
+# log files
+*.log
