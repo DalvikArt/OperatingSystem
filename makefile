@@ -1,6 +1,6 @@
 
-build/boot.bin : bootloader/boot.asm
-	nasm bootloader/boot.asm -o build/boot.bin
+build/boot.bin : src/bootloader/boot.asm
+	nasm src/bootloader/boot.asm -o build/boot.bin
 
 clean:
 	rm build/*.bin
