@@ -53,4 +53,5 @@ dkms.conf
 
 # build files
 *.bin
+*.img
 build/
