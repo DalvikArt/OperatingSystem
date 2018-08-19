@@ -9,7 +9,7 @@ RootDirSectors              equ 14      ; sectors of root directory         (BPB
 SectorNumOfRootDirStart     equ 19      ; start sector of root directory:   BPB_RsvdSecCnt + BPB_NumFATs * BPB_FATSz16
 SectorNumOfFAT1Start        equ 1       ; = BPB_RsvdSecCnt
 
-; start of boot sector
+; Entry point of boot sector
 jmp     short   Label_Start             ; jump to boot program
 nop                                     ; placeholder
 BS_OEMName          db  'dalvikar'      ; OEM Name
@@ -34,33 +34,148 @@ BS_FileSysType      db  'FAT12   '      ; file system type
 
 ; start of boot program
 
+; entry point
+Label_Start:
+; init registers
+mov     ax, cs
+mov     ds, ax
+mov     es, ax
+mov     ss, ax
+mov     sp, BaseOfStack
+
+; clear screen
+; AH = 06h roll pages
+; AL = page num (0 to clear screen)
+; BH = color attributes
+; CL = left row, CH = left column
+; DL = right row, DL = right column
+mov     ax, 0600h
+mov     bx, 0700h
+mov     cx, 0
+mov     dx, 184Fh
+int     10h
+
+; set focus
+; AH = 02h set focus
+; DL = row
+; DH = column
+; BH = page num
+mov     ax, 0200h
+mov     bx, 0000h
+mov     dx, 0000h
+int     10h
+
+; display boot string
+; AH = 13h display a string
+; AL = 01h display mode
+; CX = StringLen
+; DH = row, DL = column
+; ES:BP = String adress
+; BH = page num
+; BL = text attributes
+mov     ax, 1301h
+mov     bx, 000fh
+mov     cx, 16
+mov     bp, StartBootMessage
+int     10h
+
+; reset floppy
+; AH = 00h reset floppy
+; DL = drive num
+xor     ah, ah
+xor     dl, dl
+int     13h
+
+push    1000h
+push    2h
+call    Func_ReadOneSector
+
+; loop
+jmp $
+
 ;;; Function:         Read one sector from floppy
-;;; Params:           LBA, BufAddr 
+;;; Params:           ClusNum, BufAddr 
 ;;; Return value:     None
-;;; Descryption:      Read one sector from floppy, LBA is the logical block address,
+;;; Descryption:      Read one sector from floppy, ClusNum is the Cluster number,
 ;;;                   BufAddr is the buffer address to store data of the sector read.
 Func_ReadOneSector:
-; protect registers
-push ax
-push bx
-push cx
-push dx
-
 ; construct stack frame
 push    bp
-mov     bp, es
+mov     bp, sp
 
+; protect registers
+push    ax
+push    bx
+push    cx
+push    dx
 
+; ClusNum = bp + 4
+; BufAddr = bp + 6
 
-; recover stack frame
-mov     es, bp
-pop bp 
+; AX = LSB(logical block address)
+mov     ax, [bp + 4]
+sub     ax, 2
+mov     bx, [BPB_SecPerClus]
+xor     bh, bh
+mul     bx
+add     ax, [BPB_HiddSec]
+add     ax, [BPB_RsvdSecCnt]
+mov     cx, ax
+mov     ax, [BPB_NumFATs]
+mov     bx, [BPB_FATSz16]
+mul     bx
+add     ax, cx
+add     ax, RootDirSectors
+dec     ax
+
+; AX = LSB / BPB_SecPerTrk, DX = LSB % BPB_SecPerTrk
+mov     bx, [BPB_SecPerTrk]
+div     bx
+
+; CL = SectorNumber = LSB % BPB_SecPerTrk + 1
+mov     cl, dl
+inc     cl
+
+; AX = LSB / BPB_SecPerTrk / BPB_NumHeads, BX = (LSB / BPB_SecPerTrk) % BPB_NumHeads
+mov     bx, [BPB_NumHeads]
+div     bx
+
+; CH = TrackNumber
+mov     ch, al
+
+; DH = HeadNum
+mov     dh, bl
+
+; DL = DriveNum
+mov     dl, [BS_DrvNum]
+
+; AH = 0x2  Read data from floppy
+; AL = Read sector num
+; CH = TrackNumber, CL = SectorNumber
+; DH = HeadNumber,  DL = DriveNumber
+; BX = BufferAddress
+mov     ah, 02h
+mov     al, 1
+mov     bx, [bp + 6]
+int     13h
 
 ; recover registers
-pop dx
-pop cx
-pop bx
-pop ax
+pop     dx
+pop     cx
+pop     bx
+pop     ax
+
+; recover stack frame
+mov     sp, bp
+pop     bp 
+
 ; return
 ret
 ;;; End of function 
+
+; message string
+StartBootMessage:   db  "Start Booting..."
+
+; padding zero and set flag
+times   510 - ($ - $$) db 0
+dw      0xaa55
