@@ -89,6 +89,7 @@ int     13h
 push    1000h
 push    2h
 call    Func_ReadOneSector
+add     sp, 4h
 
 ; loop
 jmp $
@@ -122,6 +123,7 @@ add     ax, [BPB_HiddSec]
 add     ax, [BPB_RsvdSecCnt]
 mov     cx, ax
 mov     ax, [BPB_NumFATs]
+xor     ah,ah
 mov     bx, [BPB_FATSz16]
 mul     bx
 add     ax, cx
@@ -136,15 +138,15 @@ div     bx
 mov     cl, dl
 inc     cl
 
-; AX = LSB / BPB_SecPerTrk / BPB_NumHeads, BX = (LSB / BPB_SecPerTrk) % BPB_NumHeads
-mov     bx, [BPB_NumHeads]
-div     bx
+; AL = LSB / BPB_SecPerTrk / BPB_NumHeads, AH = (LSB / BPB_SecPerTrk) % BPB_NumHeads
+mov     bx, [BPB_NumHeads] ;7cba
+div     bl
 
 ; CH = TrackNumber
 mov     ch, al
 
 ; DH = HeadNum
-mov     dh, bl
+mov     dh, ah
 
 ; DL = DriveNum
 mov     dl, [BS_DrvNum]
