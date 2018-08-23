@@ -8,7 +8,6 @@ OffsetOfLoader  equ 0x00                ; 0x1000 << 4 + 0x00 = 0x10000
 RootDirSectors              equ 14      ; sectors of root directory         (BPB_RootEntCnt * 32) / BPB_BytesPerSec
 SectorNumOfRootDirStart     equ 19      ; start sector of root directory:   BPB_RsvdSecCnt + BPB_NumFATs * BPB_FATSz16
 SectorNumOfFAT1Start        equ 1       ; = BPB_RsvdSecCnt
-SectorBalance               equ 17
 
 ; Entry point of boot sector
 jmp     short   Label_Start             ; jump to boot program
@@ -67,127 +66,6 @@ mov     dx, 0000h
 int     10h
 
 ; display boot string
-push    StartBootMessageLength
-push    StartBootMessage
-call    Func_PrintString
-add     sp, 4h
-
-; reset floppy
-; AH = 00h reset floppy
-; DL = drive num
-xor     ah, ah
-xor     dl, dl
-int     13h
-
-; Search for loader.bin
-mov     word [SectorNo], SectorNumOfRootDirStart
-
-Label_SearchInRootDirBegin:
-cmp     word [RootDirSizeForLoop], 0
-jz      Label_NoLoaderBin
-dec     word [RootDirSizeForLoop]
-mov     ax, 0000h
-mov     es, ax
-mov     bx, 8000h                       ; read buffer
-mov     ax, [SectorNo]                  ; sector number
-mov     cl, 1                           ; read number
-call    Func_ReadOneSector
-mov     si, LoaderFileName
-mov     di, 8000h
-cld
-mov     dx, 10h
-
-Label_SearchForLoaderBin:
-cmp     dx, 0
-jz      Label_GoToNextSectorInRootDir
-dec     dx
-mov     cx, 11
-
-Label_CmpFileName:
-cmp     cx, 0
-jz      Label_FileNameFound
-dec     cx
-lodsb
-cmp     al, byte [es:di]
-jz      Label_GoOn
-jmp     Label_Different
-
-Label_GoOn:
-inc     di
-jmp     Label_CmpFileName
-
-Label_Different:
-and     di, 0ffe0h
-add     di, 20h
-mov     si, LoaderFileName
-jmp     Label_SearchForLoaderBin
-
-Label_GoToNextSectorInRootDir:
-add     word [SectorNo], 1
-jmp     Label_SearchInRootDirBegin
-
-Label_NoLoaderBin:
-; display no loader error
-push    ErrLoaderNotFoundLength
-push    ErrLoaderNotFound
-call    Func_PrintString
-add     sp, 4h
-
-; loop waiting
-jmp $
-
-Label_FileNameFound:
-nop
-; TODO: complete the file name found part
-
-; Read one sector from floppy
-; Parms:
-; AX = SectorNumber, CL = ReadNum, BX = BufferAddress
-; Return:
-; No return
-Func_ReadOneSector:
-
-push    bp
-mov     bp, sp
-sub     sp, 2
-mov     byte [bp - 2], cl
-push    bx
-mov     bl, [BPB_SecPerTrk]
-div     bl
-inc     ah
-mov     cl, ah
-mov     dh, al
-shr     al, 1
-pop     bx
-mov     dl, [BS_DrvNum]
-Label_GoOnReading:
-mov     ah, 2
-mov     al, byte [bp - 2]
-int     13h
-jc      Label_GoOnReading
-add     sp, 2
-pop     bp
-ret
-
-; Print a string on screen
-; Parms:
-; Stack: StringAddress, StringLength
-; Return:
-; No return
-Func_PrintString:
-
-; construct stack frame
-push    bp
-mov     bp, sp
-
-; protect registers
-push    ax
-push    bx
-push    cx
-
-; protect BP
-push bp
-; display a string
 ; AH = 13h display a string
 ; AL = 01h display mode
 ; CX = StringLen
@@ -197,36 +75,109 @@ push bp
 ; BL = text attributes
 mov     ax, 1301h
 mov     bx, 000fh
-mov     cx, [bp + 6]
-mov     bp, [bp + 4]
+mov     cx, 16
+mov     bp, StartBootMessage
 int     10h
-; recover bp
-pop bp
+
+; reset floppy
+; AH = 00h reset floppy
+; DL = drive num
+xor     ah, ah
+xor     dl, dl
+int     13h
+
+push    1000h
+push    2h
+call    Func_ReadOneSector
+add     sp, 4h
+
+; loop
+jmp $
+
+;;; Function:         Read one sector from floppy
+;;; Params:           ClusNum, BufAddr 
+;;; Return value:     None
+;;; Descryption:      Read one sector from floppy, ClusNum is the Cluster number,
+;;;                   BufAddr is the buffer address to store data of the sector read.
+Func_ReadOneSector:
+; construct stack frame
+push    bp
+mov     bp, sp
+
+; protect registers
+push    ax
+push    bx
+push    cx
+push    dx
+
+; ClusNum = bp + 4
+; BufAddr = bp + 6
+
+; AX = LSB(logical block address)
+mov     ax, [bp + 4]
+sub     ax, 2
+mov     bx, [BPB_SecPerClus]
+xor     bh, bh
+mul     bx
+add     ax, [BPB_HiddSec]
+add     ax, [BPB_RsvdSecCnt]
+mov     cx, ax
+mov     ax, [BPB_NumFATs]
+xor     ah,ah
+mov     bx, [BPB_FATSz16]
+mul     bx
+add     ax, cx
+add     ax, RootDirSectors
+dec     ax
+
+; AX = LSB / BPB_SecPerTrk, DX = LSB % BPB_SecPerTrk
+mov     bx, [BPB_SecPerTrk]
+div     bx
+
+; CL = SectorNumber = LSB % BPB_SecPerTrk + 1
+mov     cl, dl
+inc     cl
+
+; AL = LSB / BPB_SecPerTrk / BPB_NumHeads, AH = (LSB / BPB_SecPerTrk) % BPB_NumHeads
+mov     bx, [BPB_NumHeads] ;7cba
+div     bl
+
+; CH = TrackNumber
+mov     ch, al
+
+; DH = HeadNum
+mov     dh, ah
+
+; DL = DriveNum
+mov     dl, [BS_DrvNum]
+
+; AH = 0x2  Read data from floppy
+; AL = Read sector num
+; CH = TrackNumber, CL = SectorNumber
+; DH = HeadNumber,  DL = DriveNumber
+; BX = BufferAddress
+mov     ah, 02h
+mov     al, 1
+mov     bx, [bp + 6]
+int     13h
 
 ; recover registers
+pop     dx
 pop     cx
 pop     bx
 pop     ax
 
-; close stack frame
+; recover stack frame
 mov     sp, bp
-pop     bp
+pop     bp 
+
 ; return
 ret
+;;; End of function 
 
+; message string
+StartBootMessage:   db  "Start Booting..."
 
-; Global vars
-SectorNo            dw 0
-RootDirSizeForLoop  dw 0
-
-; Strings
-StartBootMessageLength  equ 18
-StartBootMessage        db 'Start booting...',0dh,0ah
-ErrLoaderNotFoundLength equ 25
-ErrLoaderNotFound       db 'Error: No loader found!',0dh,0ah
-LoaderFileName          db  "LOADER  BIN",0h
-
-; padding zero
+; padding zero and set flag
 times   510 - ($ - $$) db 0
-; boot signature
-dw 0xaa55
+dw      0xaa55
