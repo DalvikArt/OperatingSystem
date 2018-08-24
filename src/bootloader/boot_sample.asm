@@ -31,7 +31,38 @@ mov     bx, 0000h
 mov     dx, 0000h
 int     10h
 
-; display boot string
+; print boot message
+push    0000h
+push    16
+push    StartBootMessage
+call    Func_PrintString
+
+; loop wait
+jmp $
+
+; Print a string on screen
+; Parms:
+; Stack: StringAddress, StringLength, ColRow
+; Return:
+; No return
+Func_PrintString:
+
+; construct stack frame
+push    bp
+mov     bp, sp
+
+; StringAddress     = [bp + 4]
+; StringLength      = [bp + 6]
+; ColRow            = [bp + 8]
+
+; protect registers
+push    ax
+push    bx
+push    cx
+
+; protect BP
+push bp
+; display a string
 ; AH = 13h display a string
 ; AL = 01h display mode
 ; CX = StringLen
@@ -41,22 +72,26 @@ int     10h
 ; BL = text attributes
 mov     ax, 1301h
 mov     bx, 000fh
-mov     cx, 16
-mov     bp, StartBootMessage
+mov     cx, [bp + 6]
+mov     dx, [bp + 8]
+mov     bp, [bp + 4]
 int     10h
+; recover bp
+pop bp
+
+; recover registers
+pop     cx
+pop     bx
+pop     ax
+
+; close stack frame
+mov     sp, bp
+pop     bp
+; return
+ret     6h
 
 ; message string
 StartBootMessage:   db  "Start Booting..."
-
-; reset floppy
-; AH = 00h reset floppy
-; DL = drive num
-xor     ah, ah
-xor     dl, dl
-int     13h
-
-; loop wait
-jmp $
 
 ; padding zero and set flag
 times   510 - ($ - $$) db 0
