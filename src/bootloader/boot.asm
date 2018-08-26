@@ -67,6 +67,7 @@ mov     dx, 0000h
 int     10h
 
 ; display boot string
+push    0000h
 push    StartBootMessageLength
 push    StartBootMessage
 call    Func_PrintString
@@ -128,6 +129,7 @@ jmp     Label_SearchInRootDirBegin
 
 Label_NoLoaderBin:
 ; display no loader error
+push    0100h ;RowColumn
 push    ErrLoaderNotFoundLength
 push    ErrLoaderNotFound
 call    Func_PrintString
@@ -171,7 +173,7 @@ ret
 
 ; Print a string on screen
 ; Parms:
-; Stack: StringAddress, StringLength
+; Stack: StringAddress, StringLength, ColRow
 ; Return:
 ; No return
 Func_PrintString:
@@ -179,6 +181,10 @@ Func_PrintString:
 ; construct stack frame
 push    bp
 mov     bp, sp
+
+; StringAddress     = [bp + 4]
+; StringLength      = [bp + 6]
+; ColRow            = [bp + 8]
 
 ; protect registers
 push    ax
@@ -198,6 +204,7 @@ push bp
 mov     ax, 1301h
 mov     bx, 000fh
 mov     cx, [bp + 6]
+mov     dx, [bp + 8]
 mov     bp, [bp + 4]
 int     10h
 ; recover bp
@@ -212,7 +219,7 @@ pop     ax
 mov     sp, bp
 pop     bp
 ; return
-ret
+ret     6h
 
 
 ; Global vars
