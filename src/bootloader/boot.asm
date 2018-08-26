@@ -13,8 +13,8 @@ SectorBalance               equ 17
 ; Entry point of boot sector
 jmp     short   Label_Start             ; jump to boot program
 nop                                     ; placeholder
-BS_OEMName          db  'dalvikar'      ; OEM Name
-BPB_BytsPerSec      dw  512             ; bytes per section
+BS_OEMName          db  'MSDOS5.0'      ; OEM Name
+BPB_BytesPerSec     dw  512             ; bytes per section
 BPB_SecPerClus      db  1               ; sectors per cluster
 BPB_RsvdSecCnt      dw  1               ; reserved sector count (boot sector)
 BPB_NumFATs         db  2               ; number of FAT tables
@@ -30,7 +30,7 @@ BS_DrvNum           db  0               ; number of drives
 BS_Reserved1        db  0               ; Reserved
 BS_BootSig          db  29h             ; boot signature
 BS_VolID            dd  0               ; volume ID
-BS_VolLab           db  'bootloader '   ; volume name
+BS_VolLab           db  'bootloader '   ; volume name, padding with space(20h)
 BS_FileSysType      db  'FAT12   '      ; file system type
 
 ; start of boot program
