@@ -8,12 +8,12 @@ int main(int argc,char *argv[])
 {
     if(argc != 2)
     {
-        puts("Usage: fat12 ImageFile");
+        printf("Usage: %s ImageFile\n", argv[0]);
         return 1;
     }
 
     // open image file
-    FILE *pImageFile = fopen(argv[1],"rb");
+    FILE *pImageFile = fopen(argv[1], "rb");
 
     if(pImageFile == NULL)
     {
@@ -55,12 +55,16 @@ int main(int argc,char *argv[])
     // finish reading, close file
     fclose(pImageFile);
 
+    // print FAT12 structure
     PrintImage(pImageBuffer);
 
+    // seek files of root directory
     SeekRootDir(pImageBuffer);
 
+    // file read buffer
     unsigned char outBuffer[2048];
 
+    // read file 0
     DWORD fileSize = ReadFile(pImageBuffer, &FileHeaders[0], outBuffer);
 
     printf("File size: %u, file content: \n%s",fileSize, outBuffer);

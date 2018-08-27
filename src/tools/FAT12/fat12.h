@@ -32,8 +32,8 @@ struct _FAT12_HEADER {
     BYTE    BS_FileSysType[8];
 }__attribute__((packed)) _FAT12_HEADER;
 
-#define FILE_HEADER struct _FILE_HEADER
-#define PFILE_HEADER struct _FILE_HEADER*
+typedef struct _FILE_HEADER FILE_HEADER;
+typedef struct _FILE_HEADER *PFILE_HEADER;
 
 struct _FILE_HEADER {
     BYTE    DIR_Name[11];

@@ -54,10 +54,12 @@ void SeekRootDir(unsigned char *pImageBuffer)
 
     puts("\nStart seek files of root dir:");
 
+    // sectors number of start of root directory
     DWORD wRootDirStartSec = pFAT12Header->BPB_HiddSec + pFAT12Header->BPB_RsvdSecCnt + pFAT12Header->BPB_NumFATs * pFAT12Header->BPB_FATSz16;
 
     printf("Start sector of root directory:    %u\n", wRootDirStartSec);
 
+    // bytes num of start of root directory
     DWORD dwRootDirStartBytes = wRootDirStartSec * pFAT12Header->BPB_BytesPerSec;
     printf("Start bytes of root directory:      %u\n",dwRootDirStartBytes);
 
@@ -66,6 +68,7 @@ void SeekRootDir(unsigned char *pImageBuffer)
     int fileNum = 1;
     while(*(BYTE *)pFileHeader)
     {
+        // copy file header to the array
         FileHeaders[fileNum - 1] = *pFileHeader;
         
         char buffer[20];
@@ -122,6 +125,7 @@ DWORD ReadFile(unsigned char *pImageBuffer, PFILE_HEADER pFileHeader, unsigned c
 
     printf("The FAT chain of file %s:\n", nameBuffer);
 
+    // calculate the pointer of FAT Table
     BYTE *pbStartOfFATTab = pImageBuffer + (pFAT12Header->BPB_HiddSec + pFAT12Header->BPB_RsvdSecCnt) * pFAT12Header->BPB_BytesPerSec;
 
     WORD next = pFileHeader->DIR_FstClus;
@@ -131,10 +135,13 @@ DWORD ReadFile(unsigned char *pImageBuffer, PFILE_HEADER pFileHeader, unsigned c
     {
         printf(", 0x%03x", next);
 
+        // get the LSB of clus num
         DWORD dwCurLSB = GetLSB(next, pFAT12Header);
 
+        // read data
         readBytes += ReadData(pImageBuffer, dwCurLSB, outBuffer + readBytes);
 
+        // get next clus num according to current clus num
         next = GetFATNext(pbStartOfFATTab, next);
 
     }while(next <= 0xfef);
