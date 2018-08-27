@@ -87,7 +87,7 @@ DWORD GetLSB(DWORD ClusOfTable, PFAT12_HEADER pFAT12Header)
     DWORD dwDataStartClus =  pFAT12Header->BPB_HiddSec + pFAT12Header->BPB_RsvdSecCnt + pFAT12Header->BPB_NumFATs * pFAT12Header->BPB_FATSz16 + \
                             pFAT12Header->BPB_RootEntCnt * 32 / pFAT12Header->BPB_BytesPerSec;
 
-    return dwDataStartClus + (ClusOfTable - 2) * pFAT12Header->BPB_SecPerClus - 1;
+    return dwDataStartClus + (ClusOfTable - 2) * pFAT12Header->BPB_SecPerClus;
 }
 
 WORD GetFATNext(BYTE *FATTable, WORD CurOffset)
@@ -96,9 +96,20 @@ WORD GetFATNext(BYTE *FATTable, WORD CurOffset)
 
     WORD nextOff = *(WORD *)(FATTable + tabOff);
 
-    nextOff = nextOff % 2 == 0 ? nextOff & 0x0fff : nextOff >> 4;
+    nextOff = nextOff % 2 == 0 ? nextOff >> 4 : nextOff & 0x0fff;
 
     return nextOff;
+}
+
+DWORD ReadData(unsigned char *pImageBuffer, DWORD LSB, unsigned char *outBuffer)
+{
+    PFAT12_HEADER pFAT12Header = (PFAT12_HEADER)pImageBuffer;
+
+    DWORD dwReadPosBytes = LSB * pFAT12Header->BPB_BytesPerSec;
+
+    memcpy(outBuffer, pImageBuffer + dwReadPosBytes, pFAT12Header->BPB_SecPerClus * pFAT12Header->BPB_BytesPerSec);
+
+    return pFAT12Header->BPB_SecPerClus * pFAT12Header->BPB_BytesPerSec;
 }
 
 DWORD ReadFile(unsigned char *pImageBuffer, PFILE_HEADER pFileHeader, unsigned char *outBuffer)
@@ -112,19 +123,23 @@ DWORD ReadFile(unsigned char *pImageBuffer, PFILE_HEADER pFileHeader, unsigned c
     printf("The FAT chain of file %s:\n", nameBuffer);
 
     BYTE *pbStartOfFATTab = pImageBuffer + (pFAT12Header->BPB_HiddSec + pFAT12Header->BPB_RsvdSecCnt) * pFAT12Header->BPB_BytesPerSec;
-    printf("0x%03x", pFileHeader->DIR_FstClus);
 
-    WORD next = GetFATNext(pbStartOfFATTab, pFileHeader->DIR_FstClus);
-    while(next <= 0xfef)
+    WORD next = pFileHeader->DIR_FstClus;
+    
+    DWORD readBytes = 0;
+    do
     {
         printf(", 0x%03x", next);
 
+        DWORD dwCurLSB = GetLSB(next, pFAT12Header);
+
+        readBytes += ReadData(pImageBuffer, dwCurLSB, outBuffer + readBytes);
+
         next = GetFATNext(pbStartOfFATTab, next);
-    }
+
+    }while(next <= 0xfef);
 
     puts("");
 
-    DWORD dwFirstLSB = GetLSB(pFileHeader->DIR_FstClus, pFAT12Header);
-
-    printf("\nLSB of first cluster:   %u\n", dwFirstLSB);
+    return readBytes;
 }

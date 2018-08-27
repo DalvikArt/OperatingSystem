@@ -63,5 +63,7 @@ int main(int argc,char *argv[])
 
     DWORD fileSize = ReadFile(pImageBuffer, &FileHeaders[0], outBuffer);
 
+    printf("File size: %u, file content: \n%s",fileSize, outBuffer);
+
     return 0;
 }
