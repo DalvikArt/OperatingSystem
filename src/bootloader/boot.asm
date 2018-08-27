@@ -2,13 +2,10 @@
 org 0x7c00
 
 BaseOfStack     equ 0x7c00
-BaseOfLoader    equ 0x1000              ; LoaderAddress = BaseOfLoader << 4 + OffsetOfLoader = \
-OffsetOfLoader  equ 0x00                ; 0x1000 << 4 + 0x00 = 0x10000
-
-RootDirSectors              equ 14      ; sectors of root directory         (BPB_RootEntCnt * 32) / BPB_BytesPerSec
-SectorNumOfRootDirStart     equ 19      ; start sector of root directory:   BPB_RsvdSecCnt + BPB_NumFATs * BPB_FATSz16
-SectorNumOfFAT1Start        equ 1       ; = BPB_RsvdSecCnt
-SectorBalance               equ 17
+RootDirSecNum   equ 14                  ; sector count of root directory  (BPB_RootEntCnt * 32) / BPB_BytesPerSec
+DirStruPerSec   equ 16                  ; directory structure in on sector
+RootDirStart    equ 19
+BufferAddr      equ 0x8000
 
 ; Entry point of boot sector
 jmp     short   Label_Start             ; jump to boot program
@@ -71,105 +68,25 @@ push    0000h
 push    StartBootMessageLength
 push    StartBootMessage
 call    Func_PrintString
-add     sp, 4h
 
-; reset floppy
-; AH = 00h reset floppy
-; DL = drive num
-xor     ah, ah
-xor     dl, dl
-int     13h
+push    LoaderFileName
+call    Func_FindFile
 
-; Search for loader.bin
-mov     word [SectorNo], SectorNumOfRootDirStart
+cmp     ax, ax
+jnz     Label_LoaderFound
 
-Label_SearchInRootDirBegin:
-cmp     word [RootDirSizeForLoop], 0
-jz      Label_NoLoaderBin
-dec     word [RootDirSizeForLoop]
-mov     ax, 0000h
-mov     es, ax
-mov     bx, 8000h                       ; read buffer
-mov     ax, [SectorNo]                  ; sector number
-mov     cl, 1                           ; read number
-call    Func_ReadOneSector
-mov     si, LoaderFileName
-mov     di, 8000h
-cld
-mov     dx, 10h
-
-Label_SearchForLoaderBin:
-cmp     dx, 0
-jz      Label_GoToNextSectorInRootDir
-dec     dx
-mov     cx, 11
-
-Label_CmpFileName:
-cmp     cx, 0
-jz      Label_FileNameFound
-dec     cx
-lodsb
-cmp     al, byte [es:di]
-jz      Label_GoOn
-jmp     Label_Different
-
-Label_GoOn:
-inc     di
-jmp     Label_CmpFileName
-
-Label_Different:
-and     di, 0ffe0h
-add     di, 20h
-mov     si, LoaderFileName
-jmp     Label_SearchForLoaderBin
-
-Label_GoToNextSectorInRootDir:
-add     word [SectorNo], 1
-jmp     Label_SearchInRootDirBegin
-
-Label_NoLoaderBin:
-; display no loader error
-push    0100h ;RowColumn
+; loader not found
+push    0x0100
 push    ErrLoaderNotFoundLength
 push    ErrLoaderNotFound
 call    Func_PrintString
-add     sp, 4h
 
-; loop waiting
+jmp     $
+
+Label_LoaderFound:
+
+
 jmp $
-
-Label_FileNameFound:
-nop
-; TODO: complete the file name found part
-
-; Read one sector from floppy
-; Parms:
-; AX = SectorNumber, CL = ReadNum, BX = BufferAddress
-; Return:
-; No return
-Func_ReadOneSector:
-
-push    bp
-mov     bp, sp
-sub     sp, 2
-mov     byte [bp - 2], cl
-push    bx
-mov     bl, [BPB_SecPerTrk]
-div     bl
-inc     ah
-mov     cl, ah
-mov     dh, al
-shr     al, 1
-pop     bx
-mov     dl, [BS_DrvNum]
-Label_GoOnReading:
-mov     ah, 2
-mov     al, byte [bp - 2]
-int     13h
-jc      Label_GoOnReading
-add     sp, 2
-pop     bp
-ret
 
 ; Print a string on screen
 ; Parms:
@@ -221,17 +138,147 @@ pop     bp
 ; return
 ret     6h
 
+;;; Function:         Func_ReadOneSector
+;;; Params:           Stack: SectorNum, BufAddr 
+;;; Return value:     AH = StatusCode
+;;; Descryption:      Read one sector from floppy, SectorNum is the sector number,
+;;;                   BufAddr is the buffer address to store data of the sector read.
+Func_ReadOneSector:
+; construct stack frame
+push    bp
+mov     bp, sp
+sub     sp, 02h
 
-; Global vars
-SectorNo            dw 0
-RootDirSizeForLoop  dw 0
+; protect registers
+push    bx
+push    cx
+push    dx
+
+; SectorNum = bp + 4
+; BufAddr   = bp + 6
+
+mov     ax, [bp + 4]
+mov     bx, [BPB_SecPerTrk]
+div     bx
+
+inc     dx
+mov     [bp - 2], dx ; [bp - 2] is sector num
+
+mov     bx, [BPB_NumHeads]
+xor     bh, bh
+xor     dx, dx
+div     bx ; AX is cylinder, DX is head num
+
+mov     cx, [bp - 2] ; CL = sector num
+mov     ch, al ; CH = cylinder
+mov     dh, dl ; DH = head num
+mov     dl, [BS_DrvNum] ; DL = drive num
+mov     al, 1 ; AL = read count
+mov     ah, 02h ; AH = 0x02
+mov     bx, [bp + 6]
+int     13h
+
+; recover registers
+pop     dx ;7ccf
+pop     cx
+pop     bx
+
+; recover stack frame
+mov     sp, bp
+pop     bp 
+ret     04h
+
+;;; Function:         Func_CompareFileName
+;;; Parms:            Stack: FileNameAddr
+;;; Return value:     AX = not zero if equal, 0 if not equal
+;;; Descryption:      Compare if the file name is equal the loader file name.
+Func_CompareFileName:
+; FileNameAddr = [sp + 4]
+push    bx
+push    cx
+
+mov     bx, sp
+mov     ax, 1
+cld
+mov     cx, 11
+mov     si, [bx + 4]
+mov     di, LoaderFileName
+repe cmpsb
+jecxz   Label_Equal
+
+xor     ax, ax
+
+Label_Equal: ; TODO: Check the compare logic
+pop     cx
+pop     bx
+ret 02h
+
+;;; Function:         Func_FindFile
+;;; Params:           Stack: FileNameAddress
+;;; Return value:     AX = FirstCluster, zero if not found.
+;;; Descryption:      Find the file named [FileNameAddress] in root directory.
+;;;                   The length of file name must be 11 bytes.
+Func_FindFile:
+; construct stack frame
+push    bp
+mov     bp, sp
+
+xor     cx, cx ; ch = inner, cl = outer
+
+Label_StartSearch:
+cmp     cl, RootDirSecNum
+ja      Label_FileNotFound
+
+mov     ax, RootDirStart
+add     al, cl ; AX = current sector
+
+push    BufferAddr
+push    ax
+call    Func_ReadOneSector
+
+xor     ch, ch
+Label_InnerLoop:
+mov     al, ch
+xor     ah, ah
+mov     bx, 32
+mul     bx
+add     ax, BufferAddr
+mov     bx, ax ; BX = cur dir struc addr
+
+; BX = cur file name (11 btyes)
+
+push    bx
+call    Func_CompareFileName
+cmp     ax, ax
+jnz     Label_FileFound
+
+inc     ch
+
+cmp     ch, DirStruPerSec
+jle     Label_InnerLoop
+
+; go to next round
+inc     cl
+jmp     Label_StartSearch
+
+Label_FileFound:
+mov     ax, 1
+jmp     Label_FuncReturn
+
+Label_FileNotFound:
+xor     ax, ax
+
+Label_FuncReturn:
+mov     sp, bp
+pop     bp
+ret     02h
 
 ; Strings
-StartBootMessageLength  equ 18
-StartBootMessage        db 'Start booting...',0dh,0ah
-ErrLoaderNotFoundLength equ 25
-ErrLoaderNotFound       db 'Error: No loader found!',0dh,0ah
-LoaderFileName          db  "LOADER  BIN",0h
+StartBootMessageLength  equ 16
+StartBootMessage        db 'Start booting...'
+ErrLoaderNotFoundLength equ 24
+ErrLoaderNotFound       db 'Error! Loader not found!'
+LoaderFileName          db 'README  TXT'
 
 ; padding zero
 times   510 - ($ - $$) db 0
