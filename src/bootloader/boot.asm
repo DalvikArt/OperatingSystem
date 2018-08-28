@@ -5,12 +5,15 @@ BaseOfStack     equ 0x7c00
 RootDirSecNum   equ 14                  ; sector count of root directory  (BPB_RootEntCnt * 32) / BPB_BytesPerSec
 DirStruPerSec   equ 16                  ; directory structure in on sector
 RootDirStart    equ 19
+LoaderAddr      equ 0x1000
 BufferAddr      equ 0x8000
+DataStart       equ 31                  ; realstart - 2
+FATTabStart     equ 1
 
 ; Entry point of boot sector
 jmp     short   Label_Start             ; jump to boot program
 nop                                     ; placeholder
-BS_OEMName          db  'MSDOS5.0'      ; OEM Name
+BS_OEMName          db  'WINIMAGE'      ; OEM Name
 BPB_BytesPerSec     dw  512             ; bytes per section
 BPB_SecPerClus      db  1               ; sectors per cluster
 BPB_RsvdSecCnt      dw  1               ; reserved sector count (boot sector)
@@ -72,8 +75,8 @@ call    Func_PrintString
 push    LoaderFileName
 call    Func_FindFile
 
-cmp     ax, ax
-jnz     Label_LoaderFound
+cmp     ax, 0
+jne     Label_LoaderFound
 
 ; loader not found
 push    0x0100
@@ -84,7 +87,46 @@ call    Func_PrintString
 jmp     $
 
 Label_LoaderFound:
+mov     [CurrentCluster], ax
 
+; read FAT Table to buffer
+mov     bx, BufferAddr
+xor     cx, cx
+Label_ReadFATTable:
+mov     ax, FATTabStart
+add     ax, cx
+push    bx
+push    ax
+call    Func_ReadOneSector
+
+add     bx, [BPB_BytesPerSec]
+inc     cx
+cmp     cx, [BPB_FATSz16]
+jle     Label_ReadFATTable
+
+; BX = Loader address
+mov     bx, LoaderAddr
+Label_StartRead:
+mov     ax, [CurrentCluster]
+add     ax, DataStart
+push    bx
+push    ax
+call    Func_ReadOneSector
+
+; move bx to next buffer addr
+add     bx, [BPB_BytesPerSec]
+
+mov     ax, [CurrentCluster]
+call    Func_GetNextCluster ;7cb6
+mov     [CurrentCluster], ax
+cmp     ax, 0xfef
+jle     Label_StartRead
+
+sub     bx, LoaderAddr
+push    0000h
+push    bx
+push    LoaderAddr
+call    Func_PrintString
 
 jmp $
 
@@ -193,22 +235,23 @@ ret     04h
 ;;; Return value:     AX = not zero if equal, 0 if not equal
 ;;; Descryption:      Compare if the file name is equal the loader file name.
 Func_CompareFileName:
-; FileNameAddr = [sp + 4]
 push    bx
 push    cx
+
+; FileNameAddr = [sp + 6]
 
 mov     bx, sp
 mov     ax, 1
 cld
 mov     cx, 11
-mov     si, [bx + 4]
+mov     si, [bx + 6]
 mov     di, LoaderFileName
-repe cmpsb
-jecxz   Label_Equal
+repe cmpsb ;7cf6
+jcxz   Label_Equal
 
 xor     ax, ax
 
-Label_Equal: ; TODO: Check the compare logic
+Label_Equal:
 pop     cx
 pop     bx
 ret 02h
@@ -249,7 +292,7 @@ mov     bx, ax ; BX = cur dir struc addr
 
 push    bx
 call    Func_CompareFileName
-cmp     ax, ax
+cmp     ax, 0
 jnz     Label_FileFound
 
 inc     ch
@@ -262,7 +305,7 @@ inc     cl
 jmp     Label_StartSearch
 
 Label_FileFound:
-mov     ax, 1
+mov     ax, [bx + 0x1a]
 jmp     Label_FuncReturn
 
 Label_FileNotFound:
@@ -273,12 +316,51 @@ mov     sp, bp
 pop     bp
 ret     02h
 
+;;; Function:       Func_GetNextCluster
+;;; Params:         AX = CurrentCluster
+;;; Return value:   AX = NextCluster
+;;; Descryption:    Get next cluster number according to current clus num.
+Func_GetNextCluster:
+push    bx
+push    cx
+push    bp
+
+; use bp to judge odd
+mov bp, ax
+
+mov     bx, 3
+mul     bx
+shr     ax, 1 ; AX = CurClus * 3 / 2 = CurClus * 1.5
+mov     bx, ax
+mov     bx, [bx + BufferAddr]
+
+shr     bp, 1
+jc      Label_Odd
+
+and     bx, 0x0fff
+jmp Label_GetNextClusRet
+
+Label_Odd:
+shr     bx, 4
+
+Label_GetNextClusRet:
+mov     ax, bx
+
+pop     bp
+pop     cx
+pop     bx
+ret
+
+
 ; Strings
 StartBootMessageLength  equ 16
 StartBootMessage        db 'Start booting...'
 ErrLoaderNotFoundLength equ 24
 ErrLoaderNotFound       db 'Error! Loader not found!'
 LoaderFileName          db 'README  TXT'
+
+; values
+CurrentCluster          dw  0
 
 ; padding zero
 times   510 - ($ - $$) db 0

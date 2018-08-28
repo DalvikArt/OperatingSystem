@@ -99,7 +99,7 @@ WORD GetFATNext(BYTE *FATTable, WORD CurOffset)
 
     WORD nextOff = *(WORD *)(FATTable + tabOff);
 
-    nextOff = nextOff % 2 == 0 ? nextOff >> 4 : nextOff & 0x0fff;
+    nextOff = CurOffset % 2 == 0 ?  nextOff & 0x0fff : nextOff >> 4;
 
     return nextOff;
 }
@@ -145,6 +145,7 @@ DWORD ReadFile(unsigned char *pImageBuffer, PFILE_HEADER pFileHeader, unsigned c
         next = GetFATNext(pbStartOfFATTab, next);
 
     }while(next <= 0xfef);
+    printf(", 0x%03x", next);
 
     puts("");
 
