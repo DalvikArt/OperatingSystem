@@ -1,6 +1,8 @@
-
-build/boot.img : build/boot.bin build/fat12
+build/boot.img : build/boot.bin build/fat12 build/loader.bin
 	dd if=build/boot.bin of=build/boot.img bs=512 count=1 conv=notrunc
+
+build/loader.bin : src/bootloader/loader.asm
+	nasm src/bootloader/loader.asm -o build/loader.bin
 
 build/boot.bin	: src/bootloader/boot.asm
 	nasm src/bootloader/boot.asm -o build/boot.bin

@@ -5,10 +5,11 @@ BaseOfStack     equ 0x7c00
 RootDirSecNum   equ 14                  ; sector count of root directory  (BPB_RootEntCnt * 32) / BPB_BytesPerSec
 DirStruPerSec   equ 16                  ; directory structure in on sector
 RootDirStart    equ 19
-LoaderAddr      equ 0x1000
 BufferAddr      equ 0x8000
 DataStart       equ 31                  ; realstart - 2
 FATTabStart     equ 1
+BaseOfLoader    equ 0x1000
+OffsetOfLoader  equ 0x0000
 
 ; Entry point of boot sector
 jmp     short   Label_Start             ; jump to boot program
@@ -105,7 +106,9 @@ cmp     cx, [BPB_FATSz16]
 jle     Label_ReadFATTable
 
 ; BX = Loader address
-mov     bx, LoaderAddr
+mov     bx, BaseOfLoader
+mov     es, bx
+mov     bx, OffsetOfLoader
 Label_StartRead:
 mov     ax, [CurrentCluster]
 add     ax, DataStart
@@ -122,13 +125,8 @@ mov     [CurrentCluster], ax
 cmp     ax, 0xfef
 jle     Label_StartRead
 
-sub     bx, LoaderAddr
-push    0000h
-push    bx
-push    LoaderAddr
-call    Func_PrintString
-
-jmp $
+; jump to loader
+jmp BaseOfLoader:OffsetOfLoader
 
 ; Print a string on screen
 ; Parms:
@@ -357,7 +355,7 @@ StartBootMessageLength  equ 16
 StartBootMessage        db 'Start booting...'
 ErrLoaderNotFoundLength equ 24
 ErrLoaderNotFound       db 'Error! Loader not found!'
-LoaderFileName          db 'README  TXT'
+LoaderFileName          db 'LOADER  BIN'
 
 ; values
 CurrentCluster          dw  0

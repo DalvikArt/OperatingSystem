@@ -1,4 +1,4 @@
-org 0x7c00
+org 0x10000
 
 BaseOfStack equ 0x7c00
 
@@ -33,7 +33,7 @@ int     10h
 
 ; print boot message
 push    0000h
-push    16
+push    30
 push    StartBootMessage
 call    Func_PrintString
 
@@ -91,8 +91,4 @@ pop     bp
 ret     6h
 
 ; message string
-StartBootMessage:   db  "Start Booting..."
-
-; padding zero and set flag
-times   510 - ($ - $$) db 0
-dw      0xaa55
+StartBootMessage:   db  "Start Loading System Kernel..."
