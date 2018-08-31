@@ -1,7 +1,7 @@
 #/bin/sh
 
-mount build/boot.img build/bootimg/ -t vfat -o loop
-cp build/loader.bin build/bootimg/
+hdiutil mount build/boot.img
+cp build/loader.bin /Volumes/bootloader
 sync
-umount build/bootimg/
+hdiutil unmount /Volumes/bootloader
 
