@@ -58,3 +58,6 @@ build/
 
 # log files
 *.log
+
+# MAC OS Files
+.DS_Store
