@@ -1,7 +1,10 @@
 org 0x10000
 
-BaseOfStack equ 0x7c00
+jmp     Label_Start
 
+%include "fat12.inc"
+
+Label_Start:
 ; init registers
 mov     ax, cs
 mov     ds, ax
@@ -37,14 +40,18 @@ push    30
 push    StartBootMessage
 call    Func_PrintString
 
+call    Func_FastGateA20
+
+mov     ax, 0x0010
+mov     fs, ax
+
 ; loop wait
 jmp $
 
-; Print a string on screen
-; Parms:
-; Stack: StringAddress, StringLength, ColRow
-; Return:
-; No return
+;;; Function:         Func_PrintString
+;;; Params:           Stack: StringAddress, StringLength, ColRow 
+;;; Return value:     No return
+;;; Descryption:      Print a white string on screen
 Func_PrintString:
 
 ; construct stack frame
@@ -89,6 +96,41 @@ mov     sp, bp
 pop     bp
 ; return
 ret     6h
+
+;;; Function:         Func_FastGateA20
+;;; Params:           No param 
+;;; Return value:     No return
+;;; Descryption:      Enable a20
+Func_FastGateA20:
+push    ax
+in      al, 92h
+or      al, 00000010b
+out     92h, al
+pop     ax
+ret
+
+Func_EnableA20Bios:
+push    ax
+mov     ax, 0x2401
+int     15h
+pop     ax
+ret
+
+;;; Function:         Func_EnterProtectMode
+;;; Params:           No param 
+;;; Return value:     No return
+;;; Descryption:      Enter protect mode
+Func_EnterProtectMode:
+cli
+
+db 0x66
+
+mov     eax, cr0
+or      eax, 1
+mov     cr0, eax
+
+
+
 
 ; message string
 StartBootMessage:   db  "Start Loading System Kernel..."

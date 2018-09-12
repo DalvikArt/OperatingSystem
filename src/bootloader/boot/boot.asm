@@ -128,11 +128,10 @@ jle     Label_StartRead
 ; jump to loader
 jmp BaseOfLoader:OffsetOfLoader
 
-; Print a string on screen
-; Parms:
-; Stack: StringAddress, StringLength, ColRow
-; Return:
-; No return
+;;; Function:         Func_PrintString
+;;; Params:           Stack: StringAddress, StringLength, ColRow 
+;;; Return value:     No return
+;;; Descryption:      Print a white string on screen
 Func_PrintString:
 
 ; construct stack frame

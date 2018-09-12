@@ -1,11 +1,14 @@
+all: build/boot.img build/loader.bin build/boot.bin
+
 build/boot.img : build/boot.bin build/fat12 build/loader.bin
 	dd if=build/boot.bin of=build/boot.img bs=512 count=1 conv=notrunc
+	./writeloader.sh
 
-build/loader.bin : src/bootloader/loader.asm
-	nasm src/bootloader/loader.asm -o build/loader.bin
+build/boot.bin	: src/bootloader/boot/boot.asm
+	nasm src/bootloader/boot/boot.asm -o build/boot.bin
 
-build/boot.bin	: src/bootloader/boot.asm
-	nasm src/bootloader/boot.asm -o build/boot.bin
+build/loader.bin : src/bootloader/loader/loader.asm src/bootloader/loader/fat12.inc
+	nasm -i src/bootloader/loader/ src/bootloader/loader/loader.asm -o build/loader.bin
 
 prom = build/fat12
 deps = src/tools/FAT12/fat12.h src/tools/FAT12/utils.h
