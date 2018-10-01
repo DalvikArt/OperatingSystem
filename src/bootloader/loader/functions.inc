@@ -1,134 +1,3 @@
-; start address
-org 0x7c00
-
-BaseOfStack     equ 0x7c00
-RootDirSecNum   equ 14                  ; sector count of root directory  (BPB_RootEntCnt * 32) / BPB_BytesPerSec
-DirStruPerSec   equ 16                  ; directory structure in on sector
-RootDirStart    equ 19
-BufferAddr      equ 0x8000
-DataStart       equ 31                  ; realstart - 2
-FATTabStart     equ 1
-BaseOfLoader    equ 0x1000
-OffsetOfLoader  equ 0x0000
-
-; Entry point of boot sector
-jmp     short   Label_Start             ; jump to boot program
-nop                                     ; placeholder
-BS_OEMName          db  'WINIMAGE'      ; OEM Name
-BPB_BytesPerSec     dw  512             ; bytes per section
-BPB_SecPerClus      db  1               ; sectors per cluster
-BPB_RsvdSecCnt      dw  1               ; reserved sector count (boot sector)
-BPB_NumFATs         db  2               ; number of FAT tables
-BPB_RootEntCnt      dw  224             ; max dir count of root dir
-BPB_TotSec16        dw  2880            ; total number of sectors
-BPB_Media           db  0xf0            ; drive type
-BPB_FATSz16         dw  9               ; size of each FAT table
-BPB_SecPerTrk       dw  18              ; sectors per track
-BPB_NumHeads        dw  2               ; number of magnetic heads
-BPB_HiddSec         dd  0               ; number of hidden sectors
-BPB_TotSec32        dd  0               ; this value effects when BPB_TotSec16 is 0
-BS_DrvNum           db  0               ; number of drives
-BS_Reserved1        db  0               ; Reserved
-BS_BootSig          db  29h             ; boot signature
-BS_VolID            dd  0               ; volume ID
-BS_VolLab           db  'bootloader '   ; volume name, padding with space(20h)
-BS_FileSysType      db  'FAT12   '      ; file system type
-
-; start of boot program
-
-; entry point
-Label_Start:
-; init registers
-mov     ax, cs
-mov     ds, ax
-mov     es, ax
-mov     ss, ax
-mov     sp, BaseOfStack
-
-; clear screen
-; AH = 06h roll pages
-; AL = page num (0 to clear screen)
-; BH = color attributes
-; CL = left row, CH = left column
-; DL = right row, DL = right column
-mov     ax, 0600h
-mov     bx, 0700h
-mov     cx, 0
-mov     dx, 184Fh
-int     10h
-
-; set focus
-; AH = 02h set focus
-; DL = row
-; DH = column
-; BH = page num
-mov     ax, 0200h
-mov     bx, 0000h
-mov     dx, 0000h
-int     10h
-
-; display boot string
-push    0000h
-push    StartBootMessageLength
-push    StartBootMessage
-call    Func_PrintString
-
-; find loader
-push    LoaderFileName
-call    Func_FindFile
-
-cmp     ax, 0
-jne     Label_LoaderFound
-
-; loader not found
-push    0x0100
-push    ErrLoaderNotFoundLength
-push    ErrLoaderNotFound
-call    Func_PrintString
-
-jmp     $
-
-Label_LoaderFound:
-mov     [CurrentCluster], ax
-
-; read FAT Table to buffer
-mov     bx, BufferAddr
-xor     cx, cx
-Label_ReadFATTable:
-mov     ax, FATTabStart
-add     ax, cx
-push    bx
-push    ax
-call    Func_ReadOneSector
-
-add     bx, [BPB_BytesPerSec]
-inc     cx
-cmp     cx, [BPB_FATSz16]
-jle     Label_ReadFATTable
-
-; BX = Loader address
-mov     bx, BaseOfLoader
-mov     es, bx
-mov     bx, OffsetOfLoader
-Label_StartRead:
-mov     ax, [CurrentCluster]
-add     ax, DataStart
-push    bx
-push    ax
-call    Func_ReadOneSector
-
-; move bx to next buffer addr
-add     bx, [BPB_BytesPerSec]
-
-mov     ax, [CurrentCluster]
-call    Func_GetNextCluster ;7cb6
-mov     [CurrentCluster], ax
-cmp     ax, 0xfef
-jle     Label_StartRead
-
-; jump to loader
-jmp BaseOfLoader:OffsetOfLoader
-
 ;;; Function:         Func_PrintString
 ;;; Params:           Stack: StringAddress, StringLength, ColRow 
 ;;; Return value:     No return
@@ -349,18 +218,98 @@ pop     cx
 pop     bx
 ret
 
+;;; Function:         Func_FastGateA20
+;;; Params:           No param 
+;;; Return value:     No return
+;;; Descryption:      Enable a20
+Func_FastGateA20:
+push    ax
+push    dx
 
-; Strings
-StartBootMessageLength  equ 16
-StartBootMessage        db 'Start booting...'
-ErrLoaderNotFoundLength equ 24
-ErrLoaderNotFound       db 'Error! Loader not found!'
-LoaderFileName          db 'LOADER  BIN'
+in      al, 0x92
+or      al, 2
+out     0x92, al
 
-; values
-CurrentCluster          dw  0
+pop     dx
+pop     ax
+ret
 
-; padding zero
-times   510 - ($ - $$) db 0
-; boot signature
-dw 0xaa55
+Func_EnableA20Bios:
+push    ax
+mov     ax, 0x2401
+int     15h
+pop     ax
+ret
+
+;;; Function:         Func_EnterProtectMode
+;;; Params:           No param 
+;;; Return value:     No return
+;;; Descryption:      Enter protect mode
+Func_EnterProtectMode:
+cli
+
+db 0x66
+
+mov     eax, cr0
+or      eax, 1
+mov     cr0, eax
+
+ret
+
+; Function: check_a20
+;
+; Purpose: to check the status of the a20 line in a completely self-contained state-preserving way.
+;          The function can be modified as necessary by removing push's at the beginning and their
+;          respective pop's at the end if complete self-containment is not required.
+;
+; Returns: 0 in ax if the a20 line is disabled (memory wraps around)
+;          1 in ax if the a20 line is enabled (memory does not wrap around)
+ 
+check_a20:
+    pushf
+    push ds
+    push es
+    push di
+    push si
+ 
+    cli
+ 
+    xor ax, ax ; ax = 0
+    mov es, ax
+ 
+    not ax ; ax = 0xFFFF
+    mov ds, ax
+ 
+    mov di, 0x0500
+    mov si, 0x0510
+ 
+    mov al, byte [es:di]
+    push ax
+ 
+    mov al, byte [ds:si]
+    push ax
+ 
+    mov byte [es:di], 0x00
+    mov byte [ds:si], 0xFF
+
+    cmp byte [es:di], 0xFF
+ 
+    pop ax
+    mov byte [ds:si], al
+ 
+    pop ax
+    mov byte [es:di], al
+ 
+    mov ax, 0
+    je check_a20__exit
+ 
+    mov ax, 1
+ 
+check_a20__exit:
+    pop si
+    pop di
+    pop es
+    pop ds
+    popf
+ 
+    ret
