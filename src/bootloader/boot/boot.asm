@@ -121,7 +121,7 @@ call    Func_ReadOneSector
 add     bx, [BPB_BytesPerSec]
 
 mov     ax, [CurrentCluster]
-call    Func_GetNextCluster ;7cb6
+call    Func_GetNextCluster
 mov     [CurrentCluster], ax
 cmp     ax, 0xfef
 jle     Label_StartRead

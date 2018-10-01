@@ -317,3 +317,70 @@ check_a20__exit:
     popf
  
     ret
+
+;;; Function:       Func_ReadFile
+;;; Params:         Register: AX = FirstClusterOfFile; ES = BaseOfBuffer
+;;;                 Stack: BufferAddr, FATBufferAddr
+;;; Return value:   No return
+;;; Descryption:    Read a file to BaseOfBuffer:BufferAddr
+Func_ReadFile:
+push    bp
+mov     bp, sp
+
+; store values
+sub     sp, 2h ;101e1
+
+; protect registers
+push    bx
+push    cx
+
+; CurrentCluster = [bp - 2]
+
+; BufferAddr = [bp + 4]
+; FATBufferAddr = [bp + 6]
+
+mov     [bp - 2], ax
+
+; read FAT Table to buffer
+mov     bx, [bp + 6]
+xor     cx, cx
+
+Label_ReadFATTable:
+mov     ax, FATTabStart
+add     ax, cx
+push    bx
+push    ax
+call    Func_ReadOneSector
+
+add     bx, [BPB_BytesPerSec]
+inc     cx
+cmp     cx, [BPB_FATSz16]
+jle     Label_ReadFATTable
+
+; BX = Loader address
+mov     bx, [bp + 4]
+Label_StartRead:
+mov     ax, [bp - 2]
+add     ax, DataStart
+push    bx
+push    ax
+call    Func_ReadOneSector
+
+; move bx to next buffer addr
+add     bx, [BPB_BytesPerSec]
+
+mov     ax, [bp - 2]
+call    Func_GetNextCluster
+mov     [bp - 2], ax
+cmp     ax, 0xfef
+jle     Label_StartRead
+
+; recover registers
+pop     cx
+pop     bx
+
+mov     sp, bp
+pop     bp
+
+ret     04h
+

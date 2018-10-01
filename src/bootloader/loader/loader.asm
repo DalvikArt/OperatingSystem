@@ -36,7 +36,7 @@ mov     bx, 0000h
 mov     dx, 0000h
 int     10h
 
-; print boot message
+; print loading message
 push    0000h
 push    30
 push    StartBootMessage
@@ -51,15 +51,22 @@ push    LoaderFileName
 call    Func_FindFile
 
 cmp     ax, 0
-jne     Label_LoaderFound
+jne     Label_KernelFound
 
-; loader not found
+; kernel not found
 push    0x0100
 push    ErrKernelNotFoundLength
 push    ErrKernelNotFound
 call    Func_PrintString
 
-Label_LoaderFound:
+; kernel found
+Label_KernelFound:
+
+xor     bx, bx
+mov     es, bx
+push    0x3000
+push    0x8000
+call    Func_ReadFile
 
 ; loop wait
 jmp $
