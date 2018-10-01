@@ -1,11 +1,8 @@
-[bits 16]
-
-org 0x10000
-
 jmp     Label_Start
 
 %include "fat12.inc"
 
+; entry point
 Label_Start:
 ; init registers
 mov     ax, cs
@@ -36,39 +33,13 @@ mov     bx, 0000h
 mov     dx, 0000h
 int     10h
 
-; print boot message
+; display boot string
 push    0000h
-push    30
-push    StartBootMessage
+push    KernelInitMessageLength
+push    KernelInitMessage
 call    Func_PrintString
-
-call    Func_FastGateA20
-
-call    check_a20
-
-; find loader
-push    LoaderFileName
-call    Func_FindFile
-
-cmp     ax, 0
-jne     Label_LoaderFound
-
-; loader not found
-push    0x0100
-push    ErrKernelNotFoundLength
-push    ErrKernelNotFound
-call    Func_PrintString
-
-Label_LoaderFound:
-
-; loop wait
-jmp $
 
 %include "functions.inc"
 
-; message string
-StartBootMessage:       db  "Start Loading System Kernel..."
-ErrKernelNotFoundLength equ 24
-ErrKernelNotFound       db 'Error! Kernel not found!'
-
-LoaderFileName          db 'KERNEL  BIN'
+KernelInitMessageLength equ 22
+KernelInitMessage       db 'Initializing kernel...'

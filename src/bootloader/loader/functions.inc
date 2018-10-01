@@ -98,22 +98,23 @@ pop     bp
 ret     04h
 
 ;;; Function:         Func_CompareFileName
-;;; Parms:            Stack: FileNameAddr
+;;; Parms:            Stack: Str1, Str2
 ;;; Return value:     AX = not zero if equal, 0 if not equal
 ;;; Descryption:      Compare if the file name is equal the loader file name.
 Func_CompareFileName:
 push    bx
 push    cx
 
-; FileNameAddr = [sp + 6]
+; Str1 = [sp + 6]
+; Str2 = [sp + 8]
 
 mov     bx, sp
 mov     ax, 1
 cld
 mov     cx, 11
 mov     si, [bx + 6]
-mov     di, LoaderFileName
-repe cmpsb ;7cf6
+mov     di, [bx + 8]
+repe cmpsb
 jcxz   Label_Equal
 
 xor     ax, ax
@@ -121,7 +122,7 @@ xor     ax, ax
 Label_Equal:
 pop     cx
 pop     bx
-ret 02h
+ret 04h
 
 ;;; Function:         Func_FindFile
 ;;; Params:           Stack: FileNameAddress
@@ -132,6 +133,8 @@ Func_FindFile:
 ; construct stack frame
 push    bp
 mov     bp, sp
+
+; FileNameAddress = [bp + 4]
 
 xor     cx, cx ; ch = inner, cl = outer
 
@@ -157,6 +160,7 @@ mov     bx, ax ; BX = cur dir struc addr
 
 ; BX = cur file name (11 btyes)
 
+push    word [bp + 4]
 push    bx
 call    Func_CompareFileName
 cmp     ax, 0
