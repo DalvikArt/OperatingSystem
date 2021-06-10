@@ -1,0 +1,1 @@
+nasm -i .\utils\ .\kernel.asm -o kernel.bin

@@ -1,0 +1,1 @@
+qemu-system-x86_64.exe -fda .\build\boot.img
